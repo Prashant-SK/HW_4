@@ -7,33 +7,36 @@ from collections import namedtuple
 
 class State:
 
-    def __init__(self, prev1word, prev2word, words_used, prev_index, logprob, lm_state):
-        self.prev1word = prev1word
-        self.prev2word = prev2word
-        self.words_used = self.words_used
-        self.prev_index = prev_index
+    def __init__(self, words_used, last_index, logprob, lm_state):
+        self.words_used = words_used
+        self.last_index = last_index
         self.logprob = logprob
         self.lm_state = lm_state
 
     def create_new_state(self, lm_state, phrase_start, phrase_end, logprob):
-        # if new words used overlaps existing words used
-        # or if the phrase is over the distortion limit
-        #     return False
-        # else
-        #     return State(prev, words, self.words_used | words_used, new_logprob, lm_state + phrase)
-        pass
+        used = [False for _ in range(len(self.words_used))]
+        for i in range(len(self.words_used)):
+            if phrase_start <= i <= phrase_end:
+                if self.words_used[i]:
+                    return False
+                else:
+                    used[i] = True
+            else:
+                used[i] = self.words_used[i]
+        return State(used, phrase_end, logprob, lm_state)
 
     def is_equal(self, state):
-        return (self.prev1word = state.prev1word and
-                self.prev2word = state.prev2word and
-                self.words_used = state.words_used and
-                self.prev_index = state.prev_index)
+        return (self.lm_state[-1] == self.lm_state[-1] and
+                  (len(self.lm_state) >= 2 and
+                       self.lm_state[-2] == self.lm_state[-2]) and
+                self.words_used == state.words_used and
+                self.last_index == state.last_index)
 
 
 optparser = optparse.OptionParser()
-optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=../data/input)")
-optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=../data/tm)")
-optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=../data/lm)")
+optparser.add_option("-i", "--input", dest="input", default="../data/input", help="File containing sentences to translate (default=../data/input)")
+optparser.add_option("-t", "--translation-model", dest="tm", default="../data/tm", help="File containing translation model (default=../data/tm)")
+optparser.add_option("-l", "--language-model", dest="lm", default="../data/lm", help="File containing ARPA-format language model (default=../data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
 optparser.add_option("-d", "--distortion-factor", dest="d", default=4, type="int", help="Limit on how far from each other consecutive phrases can start (default=4)")
@@ -59,13 +62,13 @@ for f in french:
     # this so that they can represent translations of *any* i words.
     hypothesis = namedtuple("hypothesis", "logprob, lm_state, predecessor, phrase")
     hypothesis(0.0, lm.begin(), None, None)
-    initial_hypothesis = State(lm.begin(), lm.begin(), [False for _ in len(f)], 0, 0)
+    initial_hypothesis = State([False for _ in range(len(f))], 0, 0, lm.begin())
   
     # stacks is an array of dictionaries one longer than the sentance
     # the i-th dict of stacks represents the partial decodings of the sentance
     #   with i words matched
-    stacks = [{} for _ in f] + [{}]
-    stacks[0][lm.begin()] = initial_hypothesis
+    stacks = [[] for _ in f] + [[]]
+    stacks[0].append(initial_hypothesis)
   
     # iterates over the array of stacks, building them as it goes
     for i, stack in enumerate(stacks[:-1]):
@@ -73,7 +76,7 @@ for f in french:
         # iterates over all the partial decodings in the stack
         # only considers a number of them specified in the option -s
         # considers them in the order of likelihood
-        for state in sorted(stack.itervalues(),key=lambda state: -state.logprob)[:opts.s]: # prune
+        for state in sorted(iter(stack),key=lambda state: -state.logprob)[:opts.s]: # prune
 
             # find every phrase in the translation model (tm)
             # that can be found in the remaining sentance
@@ -82,19 +85,22 @@ for f in french:
             #    don't bother looking at words used in the current state
             start = max(state.last_index - opts.d, 0)
             end = min(state.last_index + opts.d, len(f))
+
             # looking for phrases: iterating the start index inside bounds of distortion factor
             for s in xrange(start, end):
                 # if the word was already used, dont try to use it again
                 if state.words_used[s]:
                     continue
+
                 # looking for phrases: iterating the end index
-                for t in xrange(s, len(f) + 1):
+                for t in xrange(s, len(f)):
                     # if we find an already used word, don't move the end index past it
                     if state.words_used[t]:
                         break
+
                     # is the phrase in the tranlation model
-                    if f[i:j] in tm:
-                        for phrase in tm[f[i:j]]:
+                    if f[s:t] in tm:
+                        for phrase in tm[f[s:t]]:
                             # creating a new state for every translation of the phrase
                             logprob = state.logprob + phrase.logprob
                             lm_state = state.lm_state
@@ -102,8 +108,17 @@ for f in french:
                                 (lm_state, word_logprob) = lm.score(lm_state, word)
                                 logprob += word_logprob
                             new_hypothesis = state.create_new_state(lm_state, s, t, logprob)
-                            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-                                stacks[j][lm_state] = new_hypothesis 
+
+                            length = s - t + 1
+                            inserted = False
+                            for s in range(len(stacks[i + length])):
+                                if stacks[i + length][s].is_equal(new_hypothesis):
+                                    if new_hypothesis.logbrob < logprob:
+                                        stacks[i + length][s] = new_hypothesis
+                                        inserted = True
+                                        break
+                            if not inserted:
+                                stacks[i + length].append(new_hypothesis)
                     
 
 
@@ -123,7 +138,7 @@ for f in french:
                     stacks[j][lm_state] = new_hypothesis 
             '''
 
-    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+    winner = max(iter(stacks[-1]), key=lambda h: h.logprob)
     def extract_english(h): 
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print extract_english(winner)
