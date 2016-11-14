@@ -60,9 +60,9 @@ class State:
 
 
 optparser = optparse.OptionParser()
-optparser.add_option("-i", "--input", dest="input", default="../data/input", help="File containing sentences to translate (default=../data/input)")
-optparser.add_option("-t", "--translation-model", dest="tm", default="../data/tm", help="File containing translation model (default=../data/tm)")
-optparser.add_option("-l", "--language-model", dest="lm", default="../data/lm", help="File containing ARPA-format language model (default=../data/lm)")
+optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
+optparser.add_option("-t", "--translation-model", dest="tm", default="data/tm", help="File containing translation model (default=data/tm)")
+optparser.add_option("-l", "--language-model", dest="lm", default="data/lm", help="File containing ARPA-format language model (default=data/lm)")
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to decode (default=no limit)")
 optparser.add_option("-k", "--translations-per-phrase", dest="k", default=1, type="int", help="Limit on number of translations to consider per phrase (default=1)")
 optparser.add_option("-d", "--distortion-factor", dest="d", default=6, type="int", help="Limit on how far from each other consecutive phrases can start (default=6)")
@@ -132,7 +132,7 @@ for f in french:
                             for word in phrase.english.split():
                                 (lm_state, w_logprob) = lm.score(lm_state, word)
                                 word_logprob += w_logprob
-                            distortion_logprob = abs(state.last_index - s - 1)
+                            distortion_logprob = -3 * abs(state.last_index - s - 1)
                             new_logprob = state.logprob 
                             new_logprob += WEIGHT_TRANS_MODEL * phrase.logprob
                             new_logprob += WEIGHT_LANG_MODEL * word_logprob
@@ -154,7 +154,12 @@ for f in french:
                     
 
 
-    winner = max(iter(stacks[-1]), key=lambda h: h.logprob)
+    best_stack = []
+    back = 0
+    while best_stack == []:
+        back -= 1
+        best_stack = stacks[back]
+    winner = max(iter(best_stack), key=lambda h: h.logprob)
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     print winner.get_sentance()
