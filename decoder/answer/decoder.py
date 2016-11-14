@@ -4,9 +4,9 @@ import sys
 import models
 from collections import namedtuple
 
-WEIGHT_DISTORTION = 0.4
-WEIGHT_LANG_MODEL = 0.5
-WEIGHT_TRANS_MODEL = 0.1
+WEIGHT_DISTORTION = 0.7
+WEIGHT_LANG_MODEL = 0.6
+WEIGHT_TRANS_MODEL = 0.2
 
 class State:
 
@@ -18,7 +18,7 @@ class State:
         self.logprob = logprob
         self.lm_state = lm_state
 
-    def create_new_state(self, phrase, lm_state, phrase_start, phrase_end, logprob):
+    def create_new_state(self, phrase, lm_state, phrase_start, phrase_end, logprob, distortion_max):
         used = [False for _ in range(len(self.words_used))]
         for i in range(len(self.words_used)):
             if phrase_start <= i < phrase_end:
@@ -28,6 +28,12 @@ class State:
                     used[i] = True
             else:
                 used[i] = self.words_used[i]
+        i = 0
+        while i < len(used) and used[i]:
+            i += 1
+        if i  + distortion_max < phrase_end:
+            return False
+
         return State(phrase, used, phrase_end, self, logprob, lm_state)
 
     def is_equal(self, state):
@@ -57,6 +63,15 @@ class State:
     def get_sentance(self):
         l = self.get_phrase_list()
         return " ".join(l)
+
+    def print_state(self):
+        s = ""
+        for i in self.words_used:
+            if i:
+                s += "o"
+            else:
+                s += "."
+        print "(%s, %s): %f" % (self.lm_state, s, self.logprob)
 
 
 optparser = optparse.OptionParser()
@@ -137,7 +152,7 @@ for f in french:
                             new_logprob += WEIGHT_TRANS_MODEL * phrase.logprob
                             new_logprob += WEIGHT_LANG_MODEL * word_logprob
                             new_logprob += WEIGHT_DISTORTION * distortion_logprob
-                            new_hypothesis = state.create_new_state(phrase, lm_state, s, t, new_logprob)
+                            new_hypothesis = state.create_new_state(phrase, lm_state, s, t, new_logprob, opts.d)
                             if not new_hypothesis:
                                 continue
 
@@ -162,6 +177,8 @@ for f in french:
     winner = max(iter(best_stack), key=lambda h: h.logprob)
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
+    if back != -1:
+        print "ERROR"
     print winner.get_sentance()
 
     if opts.verbose:
