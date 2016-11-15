@@ -1,0 +1,6 @@
+
+Implemented the basic decoder as described in Collins
+Added variable weights to the log probability calculator
+Added a distortion weight feature to the log probability
+
+
