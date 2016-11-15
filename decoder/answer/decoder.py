@@ -4,9 +4,9 @@ import sys
 import models
 from collections import namedtuple
 
-WEIGHT_DISTORTION = 0.7
-WEIGHT_LANG_MODEL = 0.6
-WEIGHT_TRANS_MODEL = 0.2
+WEIGHT_DISTORTION = 0.0
+WEIGHT_LANG_MODEL = 1
+WEIGHT_TRANS_MODEL = 1
 
 class State:
 
@@ -34,7 +34,8 @@ class State:
         if i  + distortion_max < phrase_end:
             return False
 
-        return State(phrase, used, phrase_end, self, logprob, lm_state)
+        return State(phrase, used, i, self, logprob, lm_state)
+
 
     def is_equal(self, state):
         if self.last_index != state.last_index:
@@ -50,6 +51,7 @@ class State:
         if len(self.lm_state) >= 2:
             if self.lm_state[-2] != state.lm_state[-2]:
                 return False
+        return True
 
     def get_phrase_list(self):
         if self.predecessor != None:
@@ -71,7 +73,7 @@ class State:
                 s += "o"
             else:
                 s += "."
-        print "(%s, %s): %f" % (self.lm_state, s, self.logprob)
+        return "(%s %s (%d)): %f" % (self.lm_state, s, self.last_index, self.logprob)
 
 
 optparser = optparse.OptionParser()
@@ -112,6 +114,8 @@ for f in french:
   
     # iterates over the array of stacks, building them as it goes
     for i, stack in enumerate(stacks[:-1]):
+        raw_input()
+        print "Stack %d" % i
   
         # iterates over all the partial decodings in the stack
         # only considers a number of them specified in the option -s
@@ -124,7 +128,7 @@ for f in french:
             #    can discount phrases that begin inside the distortion model distance
             #    don't bother looking at words used in the current state
             start = max(state.last_index - opts.d, 0)
-            end = min(state.last_index + opts.d, len(f))
+            end = min(state.last_index + opts.d - 1, len(f))
 
             # looking for phrases: iterating the start index inside bounds of distortion factor
             for s in xrange(start, end):
@@ -133,7 +137,7 @@ for f in french:
                     continue
 
                 # looking for phrases: iterating the end index
-                for t in xrange(s + 1, len(f) + 1):
+                for t in xrange(s + 1, end + 1):
                     # if we find an already used word, don't move the end index past it
                     if state.words_used[t - 1]:
                         break
@@ -155,14 +159,19 @@ for f in french:
                             new_hypothesis = state.create_new_state(phrase, lm_state, s, t, new_logprob, opts.d)
                             if not new_hypothesis:
                                 continue
+                            print "%s + (%d, %d: %s) --> %s" % (state.print_state(), s, t, phrase.english, new_hypothesis.print_state())
 
                             position = i + t - s
                             inserted = False
-                            for st in range(len(stacks[position])):
-                                if stacks[position][st].is_equal(new_hypothesis):
-                                    if new_hypothesis.logprob < logprob:
-                                        stacks[position][st] = new_hypothesis
+                            for st in stacks[position]:
+                                if st.is_equal(new_hypothesis):
+                                    if new_hypothesis.logprob < st.logprob:
+                                        print "HAPPENED"
+                                        #del st
+                                        st = new_hypothesis
                                         inserted = True
+                                        break
+                                    else:
                                         break
                             if not inserted:
                                 stacks[position].append(new_hypothesis)
