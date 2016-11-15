@@ -114,8 +114,8 @@ for f in french:
   
     # iterates over the array of stacks, building them as it goes
     for i, stack in enumerate(stacks[:-1]):
-        raw_input()
-        print "Stack %d" % i
+        #raw_input()
+        #print "Stack %d" % i
   
         # iterates over all the partial decodings in the stack
         # only considers a number of them specified in the option -s
@@ -159,20 +159,17 @@ for f in french:
                             new_hypothesis = state.create_new_state(phrase, lm_state, s, t, new_logprob, opts.d)
                             if not new_hypothesis:
                                 continue
-                            print "%s + (%d, %d: %s) --> %s" % (state.print_state(), s, t, phrase.english, new_hypothesis.print_state())
+                            #print "%s + (%d, %d: %s) --> %s" % (state.print_state(), s, t, phrase.english, new_hypothesis.print_state())
 
                             position = i + t - s
                             inserted = False
                             for st in stacks[position]:
                                 if st.is_equal(new_hypothesis):
                                     if new_hypothesis.logprob < st.logprob:
-                                        print "HAPPENED"
                                         #del st
                                         st = new_hypothesis
-                                        inserted = True
-                                        break
-                                    else:
-                                        break
+                                    inserted = True
+                                    break
                             if not inserted:
                                 stacks[position].append(new_hypothesis)
                     
