@@ -4,9 +4,9 @@ import sys
 import models
 from collections import namedtuple
 
-WEIGHT_DISTORTION = 0.0
+WEIGHT_DISTORTION = 1
 WEIGHT_LANG_MODEL = 1
-WEIGHT_TRANS_MODEL = 1
+WEIGHT_TRANS_MODEL = 0.5
 
 class State:
 
@@ -165,9 +165,9 @@ for f in french:
                             inserted = False
                             for st in stacks[position]:
                                 if st.is_equal(new_hypothesis):
-                                    if new_hypothesis.logprob < st.logprob:
-                                        #del st
-                                        st = new_hypothesis
+                                    if new_hypothesis.logprob > st.logprob:
+                                        stacks[position].remove(st)
+                                        stacks[position].append(new_hypothesis)
                                     inserted = True
                                     break
                             if not inserted:
@@ -184,7 +184,7 @@ for f in french:
     def extract_english(h):
         return "" if h.predecessor is None else "%s%s " % (extract_english(h.predecessor), h.phrase.english)
     if back != -1:
-        print "ERROR"
+        print "ERROR",
     print winner.get_sentance()
 
     if opts.verbose:
