@@ -62,6 +62,9 @@ class State:
             l.append(self.phrase.english)
         return l
 
+    def add_to_logprob(self, prob):
+        self.logprob += prob
+
     def get_sentance(self):
         l = self.get_phrase_list()
         return " ".join(l)
@@ -74,6 +77,21 @@ class State:
             else:
                 s += "."
         return "(%s %s (%d)): %f" % (self.lm_state, s, self.last_index, self.logprob)
+
+
+def future_cost(words_used, cost_estimates):
+    cost = 0
+    s = 0
+    t = 0
+    while s < len(words_used):
+        if not words_used[s]:
+            while t < len(words_used) - 1 and not words_used[t]:
+                t += 1
+            cost += cost_estimates[s][t - 1]
+            s = t
+        s += 1
+        t += 1
+    return cost
 
 
 optparser = optparse.OptionParser()
@@ -98,17 +116,40 @@ for word in set(sum(french,())):
 
 sys.stderr.write("Decoding %s...\n" % (opts.input,))
 for f in french:
-    # The following code implements a monotone decoding
-    # algorithm (one that doesn't permute the target phrases).
-    # Hence all hypotheses in stacks[i] represent translations of 
-    # the first i words of the input sentence. You should generalize
-    # this so that they can represent translations of *any* i words.
-    initial_hypothesis = State(None, [False for _ in range(len(f))], 0, None, 0, lm.begin())
+
+    cost_estimates = [[0 for i in f] for j in f]
+    for s in range(len(f)):
+
+        print "Starting at %d" % s
+        if (f[s],) in lm.table:
+            print f[s], "in table"
+            cost_estimates[s][s] = lm.table[(f[s],)].logprob
+
+        for t in range(s + 1, len(f)):
+            print "  From %d to %d %s" % (s, t, f[s:t + 1])
+            best_cost = -9999.0
+            if (f[s:t + 1],) in lm.table:
+                print f[s:t + 1], "in table"
+                best_cost = lm.table[(f[s:t + 1],)].logprob
+
+            for i in range(s + 1, t + 1):
+                print "    Looking at %d to %d leaving %d to %d %s" % (i, t, s, i, f[i:t + 1])
+                if (f[i:t + 1],) in lm.table:
+                    best_cost = max(best_cost, cost_estimates[s][i] + lm.table[(f[i:t + 1],)].logprob)
+
+            cost_estimates[s][t] = best_cost
+            raw_input()
+    for i in range(len(f)):
+        for j in range(len(f)):
+            print cost_estimates[i][j],
+        print
   
     # stacks is an array of dictionaries one longer than the sentance
     # the i-th dict of stacks represents the partial decodings of the sentance
     #   with i words matched
     stacks = [[] for _ in f] + [[]]
+
+    initial_hypothesis = State(None, [False for _ in f], 0, None, 0, lm.begin())
     stacks[0].append(initial_hypothesis)
 
   
@@ -160,6 +201,8 @@ for f in french:
                             if not new_hypothesis:
                                 continue
                             #print "%s + (%d, %d: %s) --> %s" % (state.print_state(), s, t, phrase.english, new_hypothesis.print_state())
+
+                            new_hypothesis.add_to_logprob(future_cost(new_hypothesis.words_used, cost_estimates))
 
                             position = i + t - s
                             inserted = False
