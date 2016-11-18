@@ -4,9 +4,14 @@ import sys
 import models
 from collections import namedtuple
 
-WEIGHT_DISTORTION = 1
+WEIGHT_DISTORTION = 0.5
 WEIGHT_LANG_MODEL = 1
-WEIGHT_TRANS_MODEL = 0.5
+WEIGHT_TRANS_MODEL = 0.85
+
+FUTURE_COST_LANG = 0.2
+FUTURE_COST_TRANS = 0.4
+
+
 
 class State:
 
@@ -93,6 +98,17 @@ def future_cost(words_used, cost_estimates):
         t += 1
     return cost
 
+def future_cost_of_phrase(phrase):
+    cost = (phrase.logprob * FUTURE_COST_TRANS)
+
+    english = phrase.english.split()
+    #cost_array = [0 for i in english]
+    for n in range(len(english)):
+        #cost_array[n] = lm.table[(n,)]
+        if (english[n],) in lm.table:
+            cost += (lm.table[(english[n],)].logprob * FUTURE_COST_LANG)
+    return cost
+
 
 optparser = optparse.OptionParser()
 optparser.add_option("-i", "--input", dest="input", default="data/input", help="File containing sentences to translate (default=data/input)")
@@ -120,29 +136,25 @@ for f in french:
     cost_estimates = [[0 for i in f] for j in f]
     for s in range(len(f)):
 
-        print "Starting at %d" % s
-        if (f[s],) in lm.table:
-            print f[s], "in table"
-            cost_estimates[s][s] = lm.table[(f[s],)].logprob
+        if (f[s],) in tm:
+            cost_estimates[s][s] = future_cost_of_phrase(tm[(f[s],)][0])
 
         for t in range(s + 1, len(f)):
-            print "  From %d to %d %s" % (s, t, f[s:t + 1])
             best_cost = -9999.0
-            if (f[s:t + 1],) in lm.table:
-                print f[s:t + 1], "in table"
-                best_cost = lm.table[(f[s:t + 1],)].logprob
+            if f[s:t + 1] in tm:
+                best_cost = future_cost_of_phrase(tm[f[s:t + 1]][0])
 
             for i in range(s + 1, t + 1):
-                print "    Looking at %d to %d leaving %d to %d %s" % (i, t, s, i, f[i:t + 1])
-                if (f[i:t + 1],) in lm.table:
-                    best_cost = max(best_cost, cost_estimates[s][i] + lm.table[(f[i:t + 1],)].logprob)
+                if f[i:t + 1] in tm:
+                    this_cost = cost_estimates[s][i - 1] + future_cost_of_phrase(tm[f[i:t + 1]][0])
+                    best_cost = max(best_cost, this_cost)
 
             cost_estimates[s][t] = best_cost
-            raw_input()
-    for i in range(len(f)):
-        for j in range(len(f)):
-            print cost_estimates[i][j],
-        print
+            #for i in range(len(f)):
+            #    for j in range(len(f)):
+            #        print cost_estimates[i][j],
+            #    print
+            #raw_input()
   
     # stacks is an array of dictionaries one longer than the sentance
     # the i-th dict of stacks represents the partial decodings of the sentance
@@ -202,7 +214,7 @@ for f in french:
                                 continue
                             #print "%s + (%d, %d: %s) --> %s" % (state.print_state(), s, t, phrase.english, new_hypothesis.print_state())
 
-                            new_hypothesis.add_to_logprob(future_cost(new_hypothesis.words_used, cost_estimates))
+                            #new_hypothesis.add_to_logprob(future_cost(new_hypothesis.words_used, cost_estimates))
 
                             position = i + t - s
                             inserted = False
